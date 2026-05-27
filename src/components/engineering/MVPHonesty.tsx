@@ -4,10 +4,13 @@ import { motion } from 'framer-motion'
 import { Target, CheckCircle, XCircle, ArrowRight } from 'lucide-react'
 
 /**
- * MVP 诚实性声明 —— 这个线上 MVP 到底验证了什么？
+ * MVP 诚实性声明 v3 —— 这个线上 MVP 到底验证了什么？
  * 
  * 一个好的 PM 不会说"我的 MVP 验证了一切"，
  * 而是清楚地知道"我验证了什么、没验证什么、下一步怎么补"。
+ * 
+ * v3 新增：明确区分"纸面分析"和"实物验证"，
+ * 诚实承认所有工程验证目前都停留在纸面阶段。
  */
 
 interface Hypothesis {
@@ -50,10 +53,56 @@ const hypotheses: Hypothesis[] = [
     limitation: '形态、重量、材质的体验只能通过实物验证，任何线上模拟都是自欺欺人',
   },
   {
-    statement: '设备能在 60×45×25mm 体积内实现所有功能',
+    statement: '设备能在 65×48×28mm 体积内实现所有功能',
     validated: false,
     method: '需要 3D CAD 建模 + 实际堆叠验证',
-    limitation: '本项目的机械布局分析是理论计算，实际需要考虑公差、装配间隙、线缆走线等',
+    limitation: '本项目的机械布局分析是理论计算（v3 已补充 FPC/ESD/公差体积），但仍需实物验证',
+  },
+]
+
+// v3 新增：纸面分析 vs 实物验证的诚实对照表
+const verificationStatus = [
+  {
+    item: '功耗计算',
+    paperStatus: '已完成（基于 Datasheet 典型值）',
+    physicalStatus: '未验证',
+    gap: 'Datasheet 典型值 vs 实际值可能差 20-50%（温度、工艺批次影响）',
+    effort: '烧录固件 + 万用表测电流，2小时',
+  },
+  {
+    item: '延迟链路',
+    paperStatus: '已完成（基于协议规范 + 芯片手册）',
+    physicalStatus: '未验证',
+    gap: 'BLE 连接间隔实际抖动、I2C 总线仲裁延迟、马达机械响应时间',
+    effort: '示波器测量端到端延迟，需要完整硬件，4小时',
+  },
+  {
+    item: '机械布局',
+    paperStatus: '已完成（体积估算 + ASCII 截面图）',
+    physicalStatus: '未验证',
+    gap: '2D 估算无法发现 3D 干涉、装配顺序冲突、热膨胀间隙不足',
+    effort: 'Fusion360 建模 2天 + 3D 打印 ¥50 + 试装 1天',
+  },
+  {
+    item: 'BOM 成本',
+    paperStatus: '已完成（在线查价 + 行业经验估算）',
+    physicalStatus: '未验证',
+    gap: '实际询价可能因 MOQ、交期、定制费产生 15-30% 偏差',
+    effort: '联系 3 家供应商询价，1周',
+  },
+  {
+    item: '触觉体验',
+    paperStatus: '方案设计完成（RTP 模式 + 呼吸曲线映射）',
+    physicalStatus: '未验证',
+    gap: '振动强度/频率的"舒适区"只能通过人体测试确定，无法纸面推导',
+    effort: '开发板 + DRV2605L 驱动板 + LRA 马达，¥230 + 调参 3天',
+  },
+  {
+    item: 'BLE 连接稳定性',
+    paperStatus: '协议设计完成（GATT 服务定义）',
+    physicalStatus: '未验证',
+    gap: '实际环境中的干扰、iOS/Android 兼容性、重连策略',
+    effort: '烧录固件 + 手机 App 连接测试，2天',
   },
 ]
 
@@ -148,6 +197,37 @@ export default function MVPHonesty() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* v3 新增：纸面分析 vs 实物验证对照表 */}
+      <div className="glass-card overflow-hidden border border-red-500/20">
+        <div className="p-3 border-b border-white/5">
+          <h4 className="text-sm text-red-300/80">纸面分析 vs 实物验证（诚实对照）</h4>
+          <p className="text-[10px] text-white/30 mt-1">
+            以下所有"工程验证"目前都停留在纸面阶段。纸面分析的价值是"证明方向可行"，但不能替代实物验证。
+          </p>
+        </div>
+        <div className="divide-y divide-white/5">
+          {verificationStatus.map(item => (
+            <div key={item.item} className="p-3 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-white/70 font-medium">{item.item}</span>
+                <div className="flex gap-2">
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-yellow-500/10 text-yellow-300">纸面✓</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-300">实物✗</span>
+                </div>
+              </div>
+              <p className="text-[11px] text-white/40"><span className="text-white/50">差距：</span>{item.gap}</p>
+              <p className="text-[11px] text-blue-300/50">→ 验证所需：{item.effort}</p>
+            </div>
+          ))}
+        </div>
+        <div className="p-3 border-t border-white/10 bg-white/[0.02]">
+          <p className="text-xs text-white/50">
+            <span className="text-white/70">总结：</span>完成所有实物验证需要 ~¥280 硬件 + ~2 周时间。
+            这是从"纸上谈兵"到"有据可依"的最小投入。
+          </p>
         </div>
       </div>
 

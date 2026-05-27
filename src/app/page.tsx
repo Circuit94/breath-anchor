@@ -15,6 +15,7 @@ import TechRisks from '@/components/engineering/TechRisks'
 import UserScenarios from '@/components/engineering/UserScenarios'
 import FirmwareDemo from '@/components/engineering/FirmwareDemo'
 import MVPHonesty from '@/components/engineering/MVPHonesty'
+import UserResearch from '@/components/engineering/UserResearch'
 import type { BreathPlan, BreathPhase } from '@/lib/deepseek'
 
 type Tab = 'experience' | 'hardware' | 'engineering' | 'business' | 'honesty'
@@ -228,6 +229,7 @@ export default function Home() {
               <TechRisks />
               <UserScenarios />
               <FirmwareDemo />
+              <UserResearch />
             </motion.div>
           )}
 
@@ -262,10 +264,10 @@ export default function Home() {
       {/* 底部信息 */}
       <footer className="border-t border-white/5 py-6 text-center">
         <p className="text-xs text-white/20">
-          BreathAnchor MVP v2 · Powered by DeepSeek · 硬件产品思维演示
+          BreathAnchor MVP v3 · Powered by DeepSeek · 硬件产品思维演示
         </p>
         <p className="text-xs text-white/10 mt-1">
-          本项目为产品能力展示，非商业产品 · 含工程验证推导过程
+          本项目为产品能力展示，非商业产品 · 含工程验证推导过程 · 所有验证均为纸面分析
         </p>
       </footer>
     </main>
