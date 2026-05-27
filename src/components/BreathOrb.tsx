@@ -9,6 +9,14 @@ interface BreathOrbProps {
   isPlaying: boolean
   onCycleComplete?: () => void
   onPhaseChange?: (phase: BreathPhase, index: number) => void
+  onSessionEnd?: (stats: SessionStats) => void
+  onLongPressStart?: () => void
+}
+
+export interface SessionStats {
+  totalCycles: number
+  totalDuration: number // seconds
+  phasesCompleted: number
 }
 
 const phaseLabels: Record<string, string> = {
@@ -25,12 +33,36 @@ const phaseColors: Record<string, string> = {
   rest: 'from-slate-500/40 to-slate-600/20',
 }
 
-export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseChange }: BreathOrbProps) {
+// 根据 phase pattern 计算 easing 后的 progress
+function easedProgress(progress: number, pattern: string): number {
+  switch (pattern) {
+    case 'ease-in':
+      return progress * progress // quadratic ease-in
+    case 'ease-out':
+      return 1 - (1 - progress) * (1 - progress) // quadratic ease-out
+    case 'ease-in-out':
+      return progress < 0.5
+        ? 2 * progress * progress
+        : 1 - Math.pow(-2 * progress + 2, 2) / 2
+    case 'pulse':
+      return progress // linear for pulse (handled separately)
+    default:
+      return progress // linear
+  }
+}
+
+export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseChange, onSessionEnd, onLongPressStart }: BreathOrbProps) {
   const [currentPhaseIndex, setCurrentPhaseIndex] = useState(0)
   const [timeInPhase, setTimeInPhase] = useState(0)
   const [cycleCount, setCycleCount] = useState(0)
+  const [totalElapsed, setTotalElapsed] = useState(0)
+  const [totalPhasesCompleted, setTotalPhasesCompleted] = useState(0)
+  const [isLongPressing, setIsLongPressing] = useState(false)
   const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const vibrationIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null)
   const vibrationSupported = useRef(false)
+  const sessionStartRef = useRef<number>(0)
 
   useEffect(() => {
     vibrationSupported.current = 'vibrate' in navigator
@@ -39,23 +71,37 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
   const currentPhase = phases[currentPhaseIndex]
   const progress = currentPhase ? timeInPhase / currentPhase.duration : 0
 
-  // 触觉反馈（手机端）
-  const triggerHaptic = useCallback((phase: BreathPhase) => {
+  // 持续触觉反馈 —— 贯穿整个 phase，而非仅切换时震一次
+  const startContinuousHaptic = useCallback((phase: BreathPhase) => {
     if (!vibrationSupported.current) return
     
+    // 清除之前的振动循环
+    if (vibrationIntervalRef.current) {
+      clearInterval(vibrationIntervalRef.current)
+    }
+
     try {
       switch (phase.type) {
         case 'inhale':
-          // 渐强振动模拟膨胀
-          navigator.vibrate([50, 30, 80, 30, 120])
+          // 每 400ms 一次渐强脉冲，模拟持续膨胀
+          vibrationIntervalRef.current = setInterval(() => {
+            navigator.vibrate([30, 100, 50, 100, 70])
+          }, 400)
+          navigator.vibrate([30, 100, 50, 100, 70]) // 立即触发第一次
           break
         case 'hold':
-          // 轻微脉冲
-          navigator.vibrate([20, 200, 20, 200, 20])
+          // 每 800ms 一次轻微脉冲，维持触觉存在感
+          vibrationIntervalRef.current = setInterval(() => {
+            navigator.vibrate([15, 300, 15])
+          }, 800)
+          navigator.vibrate([15, 300, 15])
           break
         case 'exhale':
-          // 渐弱振动模拟收缩
-          navigator.vibrate([120, 30, 80, 30, 50])
+          // 每 500ms 一次渐弱脉冲，模拟收缩
+          vibrationIntervalRef.current = setInterval(() => {
+            navigator.vibrate([60, 150, 40, 150, 20])
+          }, 500)
+          navigator.vibrate([60, 150, 40, 150, 20])
           break
         case 'rest':
           navigator.vibrate(0)
@@ -66,32 +112,64 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
     }
   }, [])
 
-  // 用 ref 追踪需要通知父组件的 phase 变化，避免在 setState updater 中调用父组件 setState
+  const stopHaptic = useCallback(() => {
+    if (vibrationIntervalRef.current) {
+      clearInterval(vibrationIntervalRef.current)
+      vibrationIntervalRef.current = null
+    }
+    if (vibrationSupported.current) {
+      try { navigator.vibrate(0) } catch {}
+    }
+  }, [])
+
+  // 长按手势处理
+  const handlePointerDown = useCallback(() => {
+    if (isPlaying) return // 已在播放时不处理长按
+    setIsLongPressing(true)
+    longPressTimerRef.current = setTimeout(() => {
+      // 长按 600ms 触发
+      setIsLongPressing(false)
+      onLongPressStart?.()
+    }, 600)
+  }, [isPlaying, onLongPressStart])
+
+  const handlePointerUp = useCallback(() => {
+    setIsLongPressing(false)
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current)
+      longPressTimerRef.current = null
+    }
+  }, [])
+
+  // 用 ref 追踪需要通知父组件的 phase 变化
   const pendingPhaseChange = useRef<{ phase: BreathPhase; index: number } | null>(null)
   const pendingCycleComplete = useRef(false)
 
   useEffect(() => {
     if (!isPlaying || phases.length === 0) {
       if (intervalRef.current) clearInterval(intervalRef.current)
+      stopHaptic()
       return
     }
+
+    sessionStartRef.current = Date.now()
 
     intervalRef.current = setInterval(() => {
       setTimeInPhase(prev => {
         const newTime = prev + 0.1
+        setTotalElapsed(t => t + 0.1)
         if (newTime >= phases[currentPhaseIndex].duration) {
-          // 进入下一阶段
+          setTotalPhasesCompleted(p => p + 1)
           const nextIndex = currentPhaseIndex + 1
           if (nextIndex >= phases.length) {
-            // 一个循环完成
             setCycleCount(c => c + 1)
             setCurrentPhaseIndex(0)
-            triggerHaptic(phases[0])
+            startContinuousHaptic(phases[0])
             pendingPhaseChange.current = { phase: phases[0], index: 0 }
             pendingCycleComplete.current = true
           } else {
             setCurrentPhaseIndex(nextIndex)
-            triggerHaptic(phases[nextIndex])
+            startContinuousHaptic(phases[nextIndex])
             pendingPhaseChange.current = { phase: phases[nextIndex], index: nextIndex }
           }
           return 0
@@ -103,7 +181,7 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current)
     }
-  }, [isPlaying, currentPhaseIndex, phases, triggerHaptic])
+  }, [isPlaying, currentPhaseIndex, phases, startContinuousHaptic, stopHaptic])
 
   // 在渲染后安全地通知父组件
   useEffect(() => {
@@ -118,33 +196,45 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
     }
   })
 
-  // 重置
+  // 重置 & 结束回调
   useEffect(() => {
     if (!isPlaying) {
+      // 如果之前在播放且有数据，触发结束回调
+      if (totalElapsed > 0 && onSessionEnd) {
+        onSessionEnd({
+          totalCycles: cycleCount,
+          totalDuration: Math.round(totalElapsed),
+          phasesCompleted: totalPhasesCompleted,
+        })
+      }
       setCurrentPhaseIndex(0)
       setTimeInPhase(0)
       setCycleCount(0)
+      setTotalElapsed(0)
+      setTotalPhasesCompleted(0)
+      stopHaptic()
     }
-  }, [isPlaying])
+  }, [isPlaying]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 初始触觉（延迟到下一帧，避免渲染期间更新父组件）
+  // 初始触觉
   useEffect(() => {
     if (isPlaying && phases.length > 0) {
-      triggerHaptic(phases[0])
+      startContinuousHaptic(phases[0])
       const timer = setTimeout(() => {
         onPhaseChange?.(phases[0], 0)
       }, 0)
       return () => clearTimeout(timer)
     }
-  }, [isPlaying, phases, triggerHaptic, onPhaseChange])
+  }, [isPlaying, phases, startContinuousHaptic, onPhaseChange])
 
-  // 计算orb的视觉状态
+  // 计算 orb 的视觉状态 —— 使用 easing 曲线而非线性步进
   const getOrbScale = () => {
     if (!currentPhase) return 0.7
+    const eased = easedProgress(progress, currentPhase.pattern || 'linear')
     switch (currentPhase.type) {
-      case 'inhale': return 0.6 + 0.5 * progress
+      case 'inhale': return 0.6 + 0.5 * eased
       case 'hold': return 1.1 + 0.02 * Math.sin(timeInPhase * Math.PI * 2)
-      case 'exhale': return 1.1 - 0.5 * progress
+      case 'exhale': return 1.1 - 0.5 * eased
       case 'rest': return 0.6
       default: return 0.7
     }
@@ -152,19 +242,28 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
 
   const getOrbOpacity = () => {
     if (!currentPhase) return 0.5
+    const eased = easedProgress(progress, currentPhase.pattern || 'linear')
     switch (currentPhase.type) {
-      case 'inhale': return 0.4 + 0.5 * progress
+      case 'inhale': return 0.4 + 0.5 * eased
       case 'hold': return 0.9
-      case 'exhale': return 0.9 - 0.4 * progress
+      case 'exhale': return 0.9 - 0.4 * eased
       case 'rest': return 0.4
       default: return 0.5
     }
   }
 
+  // CSS transition duration 根据 phase 动态调整（更流畅）
+  const transitionDuration = currentPhase ? Math.min(currentPhase.duration * 0.15, 0.4) : 0.1
+
   return (
     <div className="flex flex-col items-center gap-8">
       {/* 主呼吸球体 */}
-      <div className="relative w-72 h-72 flex items-center justify-center">
+      <div
+        className="relative w-72 h-72 flex items-center justify-center select-none touch-none"
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+      >
         {/* 外圈光晕 */}
         <motion.div
           className="absolute inset-0 rounded-full"
@@ -172,17 +271,17 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
             background: `radial-gradient(circle, rgba(99, 179, 237, ${getOrbOpacity() * 0.2}) 0%, transparent 70%)`,
           }}
           animate={{ scale: getOrbScale() * 1.3 }}
-          transition={{ duration: 0.1, ease: 'linear' }}
+          transition={{ duration: transitionDuration, ease: 'easeInOut' }}
         />
 
         {/* 核心球体 */}
         <motion.div
-          className={`w-48 h-48 rounded-full bg-gradient-to-br ${currentPhase ? phaseColors[currentPhase.type] : 'from-blue-400/60 to-cyan-300/40'}`}
+          className={`w-48 h-48 rounded-full bg-gradient-to-br ${currentPhase ? phaseColors[currentPhase.type] : 'from-blue-400/60 to-cyan-300/40'} ${!isPlaying ? 'cursor-pointer' : ''}`}
           animate={{
-            scale: getOrbScale(),
+            scale: isLongPressing ? 0.55 : getOrbScale(),
             opacity: getOrbOpacity(),
           }}
-          transition={{ duration: 0.1, ease: 'linear' }}
+          transition={{ duration: transitionDuration, ease: 'easeInOut' }}
           style={{
             boxShadow: `
               0 0 ${40 * getOrbOpacity()}px rgba(99, 179, 237, ${getOrbOpacity() * 0.5}),
@@ -191,6 +290,36 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
             `,
           }}
         />
+
+        {/* 长按进度环 */}
+        {isLongPressing && !isPlaying && (
+          <motion.div
+            className="absolute inset-0 flex items-center justify-center"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+          >
+            <svg className="w-56 h-56" viewBox="0 0 100 100">
+              <circle
+                cx="50" cy="50" r="46"
+                fill="none"
+                stroke="rgba(99, 179, 237, 0.3)"
+                strokeWidth="2"
+              />
+              <motion.circle
+                cx="50" cy="50" r="46"
+                fill="none"
+                stroke="rgba(99, 179, 237, 0.8)"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeDasharray={289}
+                initial={{ strokeDashoffset: 289 }}
+                animate={{ strokeDashoffset: 0 }}
+                transition={{ duration: 0.6, ease: 'linear' }}
+                style={{ transform: 'rotate(-90deg)', transformOrigin: '50% 50%' }}
+              />
+            </svg>
+          </motion.div>
+        )}
 
         {/* 中心文字 */}
         <AnimatePresence mode="wait">
@@ -214,9 +343,9 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
 
         {/* 未播放时的提示 */}
         {!isPlaying && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="text-lg text-white/40">握住开始</span>
-            <span className="text-xs text-white/20 mt-2">模拟触觉体验</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            <span className="text-lg text-white/40">长按开始</span>
+            <span className="text-xs text-white/20 mt-2">或点击下方按钮</span>
           </div>
         )}
       </div>
@@ -242,7 +371,7 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
         </div>
       )}
 
-      {/* 硬件映射说明（体现产品思维） */}
+      {/* 硬件映射说明 */}
       {isPlaying && currentPhase && (
         <motion.div
           initial={{ opacity: 0 }}
@@ -250,10 +379,10 @@ export default function BreathOrb({ phases, isPlaying, onCycleComplete, onPhaseC
           className="glass-card px-4 py-2 text-xs text-white/40 max-w-xs text-center"
         >
           <span className="text-white/60">硬件映射：</span>
-          {currentPhase.type === 'inhale' && ' 线性马达渐强振动 → 模拟设备膨胀'}
-          {currentPhase.type === 'hold' && ` 微脉冲 ${currentPhase.intensity}% @2Hz → 维持触觉存在感`}
-          {currentPhase.type === 'exhale' && ' 线性马达渐弱 → 模拟设备收缩'}
-          {currentPhase.type === 'rest' && ' 马达静止 → 完全安静'}
+          {currentPhase.type === 'inhale' && ' DRV2605L RTP 渐强 → LRA 膨胀感'}
+          {currentPhase.type === 'hold' && ` RTP ${currentPhase.intensity}% @2Hz 微脉冲 → 触觉存在感`}
+          {currentPhase.type === 'exhale' && ' RTP 渐弱 + Active Braking → 收缩感'}
+          {currentPhase.type === 'rest' && ' Standby 模式 → 完全静止'}
         </motion.div>
       )}
     </div>
