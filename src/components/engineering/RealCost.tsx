@@ -333,14 +333,51 @@ export default function RealCost() {
         </div>
       </div>
 
-      {/* 盈亏平衡分析 */}
-      <div className="glass-card p-4 space-y-3">
-        <h4 className="text-sm text-white/60 font-medium">盈亏平衡点</h4>
-        <div className="text-xs text-white/40 space-y-2">
-          <p><span className="text-white/60">一次性投入：</span>模具 ¥7万 + 认证 ¥5万 + 治具 ¥3万 + 打样 ¥5万 = <span className="text-white/60">¥20万</span></p>
-          <p><span className="text-white/60">单台净利（10K量产）：</span>¥299 × {netMargin10k.toFixed(0)}% = <span className="text-white/60">¥{(retailPrice * netMargin10k / 100).toFixed(0)}/台</span></p>
-          <p><span className="text-white/60">盈亏平衡：</span>200,000 ÷ {(retailPrice * netMargin10k / 100).toFixed(0)} ≈ <span className="text-blue-300">{Math.ceil(200000 / (retailPrice * netMargin10k / 100))} 台</span>（不含订阅收入）</p>
-          <p><span className="text-white/60">加上订阅收入：</span>假设 30% 用户订阅 ¥9.9/月，LTV 6个月 → 额外 ¥17.8/台 → 盈亏平衡降至 <span className="text-blue-300">~{Math.ceil(200000 / (retailPrice * netMargin10k / 100 + 17.8))} 台</span></p>
+      {/* 盈亏平衡分析 —— v4: 增加 500 台众筹场景 */}
+      <div className="glass-card p-4 space-y-4">
+        <h4 className="text-sm text-white/60 font-medium">盈亏平衡分析（含众筹场景）</h4>
+        
+        {/* 众筹 500 台场景 */}
+        <div className="p-3 bg-orange-500/5 rounded-lg border border-orange-500/10 space-y-2">
+          <p className="text-xs text-orange-300/80 font-medium">场景 A：众筹 500 台（最小验证批次）</p>
+          <div className="text-xs text-white/40 space-y-1">
+            <p><span className="text-white/60">一次性投入（精简版）：</span>3D打印模具 ¥2万 + 简化认证 ¥3万 + 治具 ¥2万 + 打样 ¥3万 = <span className="text-white/60">¥10万</span></p>
+            <p><span className="text-white/60">单台制造成本（500台）：</span>BOM ¥{(bomTotal1k * 1.1).toFixed(0)} + 制造 ¥{(hiddenTotal1k * 1.2).toFixed(0)} = <span className="text-white/60">¥{((bomTotal1k * 1.1) + (hiddenTotal1k * 1.2)).toFixed(0)}/台</span>（小批量溢价 10-20%）</p>
+            <p><span className="text-white/60">众筹定价：</span>早鸟 ¥249 / 正常 ¥279（众筹平台扣点 5-8%）</p>
+            <p><span className="text-white/60">单台净利（众筹）：</span>¥249 - ¥{((bomTotal1k * 1.1) + (hiddenTotal1k * 1.2)).toFixed(0)} - 平台扣点¥17 ≈ <span className={`${249 - (bomTotal1k * 1.1) - (hiddenTotal1k * 1.2) - 17 > 0 ? 'text-green-300' : 'text-red-300'}`}>¥{(249 - (bomTotal1k * 1.1) - (hiddenTotal1k * 1.2) - 17).toFixed(0)}/台</span></p>
+            <p><span className="text-white/60">500 台总利润：</span>¥{((249 - (bomTotal1k * 1.1) - (hiddenTotal1k * 1.2) - 17) * 500).toFixed(0)} — 一次性投入 ¥100,000 = <span className="text-red-300">亏损 ¥{(100000 - (249 - (bomTotal1k * 1.1) - (hiddenTotal1k * 1.2) - 17) * 500).toFixed(0)}</span></p>
+            <p className="text-white/50 pt-1 border-t border-white/5"><span className="text-orange-300">结论：</span>500 台众筹不是为了赚钱，是为了验证需求 + 收集用户反馈 + 积累口碑。亏损 ¥5-8 万是"学费"。</p>
+          </div>
+        </div>
+
+        {/* 1000 台场景 */}
+        <div className="p-3 bg-white/[0.03] rounded-lg space-y-2">
+          <p className="text-xs text-white/60 font-medium">场景 B：首批量产 1,000 台</p>
+          <div className="text-xs text-white/40 space-y-1">
+            <p><span className="text-white/60">一次性投入：</span>模具 ¥7万 + 认证 ¥5万 + 治具 ¥3万 + 打样 ¥5万 = <span className="text-white/60">¥20万</span></p>
+            <p><span className="text-white/60">单台净利：</span>¥299 × {netMargin1k.toFixed(0)}% = <span className="text-white/60">¥{(retailPrice * netMargin1k / 100).toFixed(0)}/台</span></p>
+            <p><span className="text-white/60">盈亏平衡：</span>200,000 ÷ {(retailPrice * netMargin1k / 100).toFixed(0)} ≈ <span className="text-blue-300">{Math.ceil(200000 / (retailPrice * netMargin1k / 100))} 台</span>（{netMargin1k > 0 ? '可在首批内回本' : '首批无法回本'}）</p>
+          </div>
+        </div>
+
+        {/* 10000 台场景 */}
+        <div className="p-3 bg-white/[0.03] rounded-lg space-y-2">
+          <p className="text-xs text-white/60 font-medium">场景 C：规模量产 10,000 台</p>
+          <div className="text-xs text-white/40 space-y-1">
+            <p><span className="text-white/60">单台净利：</span>¥299 × {netMargin10k.toFixed(0)}% = <span className="text-white/60">¥{(retailPrice * netMargin10k / 100).toFixed(0)}/台</span></p>
+            <p><span className="text-white/60">加上订阅收入：</span>假设 30% 用户订阅 ¥9.9/月，LTV 6个月 → 额外 ¥17.8/台</p>
+            <p><span className="text-white/60">综合单台利润：</span>¥{(retailPrice * netMargin10k / 100 + 17.8).toFixed(0)}/台 → 10K 台总利润 <span className="text-green-300">¥{((retailPrice * netMargin10k / 100 + 17.8) * 10000 / 10000).toFixed(0)}万</span></p>
+          </div>
+        </div>
+
+        <div className="p-3 bg-white/[0.03] rounded-lg">
+          <p className="text-xs text-white/50">
+            <span className="text-white/70">关键决策点：</span>众筹 500 台的目的不是盈利，而是用 ¥10 万投入换取：
+            ① 500 个真实用户的使用数据和反馈；
+            ② 验证"触觉引导呼吸"的核心假设；
+            ③ 积累产品口碑和种子用户社群。
+            如果 500 台众筹都卖不出去，说明需求不存在，及时止损。
+          </p>
         </div>
       </div>
 
