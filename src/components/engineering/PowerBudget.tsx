@@ -1,5 +1,6 @@
 'use client'
 
+import { Fragment } from 'react'
 import { motion } from 'framer-motion'
 import { Battery, AlertTriangle } from 'lucide-react'
 
@@ -108,8 +109,8 @@ export default function PowerBudget() {
           </thead>
           <tbody>
             {powerItems.map(item => (
-              <>
-                <tr key={item.module} className="border-b border-white/5 bg-white/[0.02]">
+              <Fragment key={item.module}>
+                <tr className="border-b border-white/5 bg-white/[0.02]">
                   <td colSpan={5} className="p-2.5 text-white/70 font-medium">{item.module}</td>
                 </tr>
                 {item.states.map((state, i) => (
@@ -121,7 +122,7 @@ export default function PowerBudget() {
                     <td className="p-2.5 text-white/30 hidden lg:table-cell">{state.source}</td>
                   </tr>
                 ))}
-              </>
+              </Fragment>
             ))}
           </tbody>
           <tfoot>
